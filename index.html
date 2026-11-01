@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Kokoro TTS — 100% Client‑Side Text‑to‑Speech</title>
+  <style>
+    :root {
+      color-scheme: dark;
+
+      /* Monochrome palette sampled from the reference screenshots */
+      --bg: #000000;
+      --surface: #0b0b0d;
+      --card: #151517;
+      --card-raised: #1f1f1f;
+      --fg: #f5f5f7;
+      --fg-2: #a1a1a6;
+      --muted: #6e6e73;
+      --line: rgba(255, 255, 255, 0.07);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --cta: #f5f5f7;
+      --cta-ink: #0a0a0a;
+      --radius-card: 22px;
+      --radius-field: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      background-image: radial-gradient(120% 55% at 50% 0%, #17171b 0%, #050506 55%, #000 100%);
+      background-repeat: no-repeat;
+      color: var(--fg);
+      min-height: 100dvh;
+      display: flex;
+      justify-content: center;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    ::selection { background: rgba(245, 245, 247, 0.22); }
+
+    .container {
+      width: 100%;
+      max-width: 432px;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem calc(1rem + env(safe-area-inset-bottom));
+    }
+
+    /* ---------- Header ---------- */
+    h1 {
+      margin-top: 1.1rem;
+      font-size: clamp(2.1rem, 9.5vw, 2.7rem);
+      line-height: 1.02;
+      font-weight: 700;
+      letter-spacing: -0.045em;
+      margin-bottom: 0.6rem;
+    }
+    h1 span { display: block; }
+
+    .subtitle {
+      color: var(--fg-2);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      max-width: 32ch;
+      margin-bottom: 1.4rem;
+    }
+
+    /* ---------- UI stack ---------- */
+    .ui {
+      display: flex;
+      flex-direction: column;
+      gap: 1.15rem;
+      flex: 1;
+    }
+
+    /* ---------- Status chip ---------- */
+    .status {
+      display: inline-flex;
+      align-items: center;
+      align-self: flex-start;
+      gap: 0.55rem;
+      padding: 0.42rem 0.8rem;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 0.72rem;
+      letter-spacing: 0.01em;
+      color: var(--muted);
+      max-width: 100%;
+    }
+    .status .mode {
+      color: var(--fg);
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .status .progress { transition: opacity 0.2s ease; opacity: 0; }
+    .status.loading .progress { opacity: 1; }
+
+    /* ---------- Cards ---------- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      padding: 1rem;
+    }
+
+    .label {
+      display: block;
+      font-size: 0.66rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+    }
+
+    /* ---------- Text area ---------- */
+    textarea {
+      width: 100%;
+      padding: 0.9rem 1rem;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: var(--fg);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-field);
+      resize: vertical;
+      min-height: 132px;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    textarea::placeholder { color: rgba(245, 245, 247, 0.35); }
+    textarea:focus {
+      outline: none;
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+    }
+
+    .char-counter {
+      margin-top: 0.55rem;
+      font-size: 0.7rem;
+      color: var(--muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- Voice select ---------- */
+    .voice-select {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 48px;
+      padding: 0 2.4rem 0 1rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      color: var(--fg);
+      background-color: var(--surface);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a8a8f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 1rem center;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-field);
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .voice-select:focus {
+      outline: none;
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+    }
+    .voice-select option { background: var(--card); color: var(--fg); }
+
+    .voice-info {
+      margin-top: 0.55rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* ---------- Controls ---------- */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.55rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      min-height: 52px;
+      padding: 0 1.25rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      border: 1px solid transparent;
+      border-radius: var(--radius-field);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
+    }
+    .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+    .btn:active { transform: scale(0.985); }
+    .btn:disabled { cursor: default; opacity: 0.55; }
+
+    .btn-primary {
+      background: var(--cta);
+      color: var(--cta-ink);
+      box-shadow: 0 10px 26px -12px rgba(255, 255, 255, 0.35);
+    }
+    .btn-primary:hover { background: #ffffff; }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--fg-2);
+      border-color: var(--line);
+      padding: 0 1.1rem;
+    }
+    .btn-secondary:hover { background: var(--card-raised); color: var(--fg); }
+
+    .btn-loading { opacity: 0.75; pointer-events: none; }
+    .spinner { display: none; }
+    .btn-loading .spinner {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(10, 10, 10, 0.25);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Output ---------- */
+    .audio-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--card-raised);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      animation: rise 0.28s ease both;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    audio {
+      width: 100%;
+      height: 40px;
+      border-radius: 10px;
+      background: transparent;
+      color-scheme: dark;
+    }
+
+    .download-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--fg-2);
+      text-decoration: none;
+      background: transparent;
+      border: 1px solid var(--line-strong);
+      border-radius: 12px;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .download-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg); }
+    .download-btn[href=""] { opacity: 0.4; pointer-events: none; }
+
+    /* ---------- Footer ---------- */
+    .foot {
+      margin-top: auto;
+      padding-top: 1.75rem;
+      font-size: 0.66rem;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      text-align: center;
+    }
+    .home-indicator {
+      width: 132px;
+      height: 5px;
+      margin: 1rem auto 0;
+      border-radius: 999px;
+      background: #2a2a2e;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <main class="container">
+    <h1><span>Free TTS,</span><span>right on your device.</span></h1>
+    <p class="subtitle">Convert text to speech right in the browser. Max one sentence — about 55 characters — for the cleanest audio.</p>
+
+    <div class="ui">
+      <!-- Status chip -->
+      <div class="status" id="status" role="status" aria-live="polite">
+        <span class="mode" id="modeText">Initializing…</span>
+        <span class="progress" id="progress">0%</span>
+      </div>
+
+      <!-- Text input card -->
+      <section class="card">
+        <label class="label" for="textInput">Your text</label>
+        <textarea id="textInput" maxlength="55" placeholder="Type or paste text here…">The quick brown fox jumps over the lazy dog. Kokoro is a lightweight 82 M parameter TTS model that runs entirely in the browser. Try it on your phone or laptop!</textarea>
+        <div class="char-counter" id="charCount">0 / 55 characters</div>
+      </section>
+
+      <!-- Voice card -->
+      <section class="card">
+        <label class="label" for="voiceSelect">Voice</label>
+        <select id="voiceSelect" class="voice-select">
+          <option value="am_adam">am_adam (default)</option>
+          <option value="am_michael">am_michael</option>
+          <option value="af_heart">af_heart</option>
+          <option value="af_bella">af_bella</option>
+          <option value="bf_emma">bf_emma</option>
+        </select>
+        <div class="voice-info" id="voiceInfo">Select a voice to hear it spoken</div>
+      </section>
+
+      <!-- Actions -->
+      <div class="controls">
+        <button id="generateBtn" class="btn btn-primary">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Generate Speech</span>
+        </button>
+        <button id="clearBtn" class="btn btn-secondary">Clear</button>
+      </div>
+
+      <!-- Audio player (hidden until synthesis finishes) -->
+      <div class="audio-wrapper" id="audioWrapper" style="display:none">
+        <span class="label" style="margin:0">Output</span>
+        <audio id="audioPlayer" controls preload="metadata"></audio>
+        <a id="downloadBtn" class="download-btn" href="" download>Download WAV</a>
+      </div>
+    </div>
+
+    <div class="foot">Kokoro‑82M · runs locally · no API key</div>
+    <div class="home-indicator" aria-hidden="true"></div>
+  </main>
+
+  <!-- Kokoro‑JS CDN (Esm) -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
