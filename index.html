@@ -7,6 +7,10 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Kokoro TTS — 100% Client‑Side Text‑to‑Speech</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Geist+Pixel&display=swap" rel="stylesheet">
   <style>
     :root {
       color-scheme: dark;
@@ -57,20 +61,22 @@
     /* ---------- Header ---------- */
     h1 {
       margin-top: 1.1rem;
+      font-family: "IM Fell English", Georgia, "Times New Roman", serif;
       font-size: clamp(2.1rem, 9.5vw, 2.7rem);
       line-height: 1.02;
-      font-weight: 700;
+      font-weight: 400;
       letter-spacing: -0.045em;
       margin-bottom: 0.6rem;
     }
-    h1 span { display: block; }
+    h1 > span { display: block; }
+    h1 > span:first-child { font-size: 1.1em; font-weight: 700; }
+    h1 .tts-font { font-family: "Geist Pixel", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 
     .subtitle {
       color: var(--fg-2);
       font-size: 0.88rem;
       line-height: 1.5;
-      max-width: 32ch;
-      margin-bottom: 1.4rem;
+      margin: 0;
     }
 
     /* ---------- UI stack ---------- */
@@ -84,6 +90,7 @@
     /* ---------- Status chip ---------- */
     .status {
       display: inline-flex;
+      width: fit-content;
       align-items: center;
       align-self: flex-start;
       gap: 0.55rem;
@@ -94,17 +101,14 @@
       font-size: 0.72rem;
       letter-spacing: 0.01em;
       color: var(--muted);
-      max-width: 100%;
     }
     .status .mode {
       color: var(--fg);
       font-weight: 600;
       white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
     }
-    .status .progress { transition: opacity 0.2s ease; opacity: 0; }
-    .status.loading .progress { opacity: 1; }
+    .status .progress { display: none; opacity: 0; transition: opacity 0.2s ease; }
+    .status.loading .progress { display: inline; opacity: 1; }
 
     /* ---------- Cards ---------- */
     .card {
@@ -112,6 +116,12 @@
       border: 1px solid var(--line);
       border-radius: var(--radius-card);
       padding: 1rem;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    /* The card itself becomes the input surface when its field is focused. */
+    .card:focus-within {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
     }
 
     .label {
@@ -126,65 +136,233 @@
 
     /* ---------- Text area ---------- */
     textarea {
+      display: block;
       width: 100%;
-      padding: 0.9rem 1rem;
+      padding: 0;
       font-family: inherit;
       font-size: 1rem;
       line-height: 1.5;
       color: var(--fg);
-      background: var(--surface);
-      border: 1px solid var(--line);
-      border-radius: var(--radius-field);
+      background: transparent;
+      border: 0;
+      border-radius: 0;
       resize: vertical;
-      min-height: 132px;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      min-height: 118px;
     }
     textarea::placeholder { color: rgba(245, 245, 247, 0.35); }
-    textarea:focus {
-      outline: none;
-      border-color: var(--line-strong);
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
-    }
+    textarea:focus { outline: none; }
 
     .char-counter {
-      margin-top: 0.55rem;
+      margin-top: 0.7rem;
+      padding-right: 0.15rem;
       font-size: 0.7rem;
+      line-height: 1;
       color: var(--muted);
       text-align: right;
       font-variant-numeric: tabular-nums;
     }
 
-    /* ---------- Voice select ---------- */
-    .voice-select {
+    /* ---------- Voice select (custom dropdown) ---------- */
+    .select { position: relative; }
+
+    /* Fallback: if JS fails to load, keep a usable native select visible. */
+    .voice-select-native {
       -webkit-appearance: none;
       appearance: none;
+      display: block;
       width: 100%;
-      height: 48px;
-      padding: 0 2.4rem 0 1rem;
+      min-height: 3rem;
+      padding: 0 2.4rem 0 0.95rem;
       font-family: inherit;
-      font-size: 0.95rem;
+      font-size: 1rem;
       color: var(--fg);
-      background-color: var(--surface);
-      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%238a8a8f' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-color: #0e0e11;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%236e6e73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
       background-repeat: no-repeat;
-      background-position: right 1rem center;
+      background-position: right 0.95rem center;
       border: 1px solid var(--line);
-      border-radius: var(--radius-field);
+      border-radius: 14px;
+      color-scheme: dark;
       cursor: pointer;
-      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
     }
-    .voice-select:focus {
-      outline: none;
+
+    /* Native control stays in the DOM for app.js, but is visually hidden
+       once the custom dropdown has been built. */
+    .select.is-enhanced .voice-select-native {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      clip-path: inset(50%);
+      pointer-events: none;
+    }
+
+    .select-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      width: 100%;
+      min-height: 3rem;
+      padding: 0 0.95rem;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.4;
+      color: var(--fg);
+      text-align: left;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .select-trigger:hover {
       border-color: var(--line-strong);
-      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
     }
-    .voice-select option { background: var(--card); color: var(--fg); }
+    .select-trigger:focus-visible {
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.34);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+    }
+    .select.is-open .select-trigger {
+      border-color: rgba(255, 255, 255, 0.26);
+    }
+
+    .select-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .select-chevron {
+      flex: none;
+      width: 12px;
+      height: 8px;
+      color: var(--muted);
+      transition: transform 0.18s ease, color 0.15s ease;
+    }
+    .select.is-open .select-chevron {
+      color: var(--fg-2);
+      transform: rotate(180deg);
+    }
+
+    .select-menu {
+      position: absolute;
+      top: calc(100% + 0.4rem);
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      max-height: 15rem;
+      margin: 0;
+      padding: 0.35rem;
+      list-style: none;
+      overflow-y: auto;
+      overscroll-behavior: contain;
+      background: rgba(24, 24, 27, 0.94);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow:
+        0 20px 48px -16px rgba(0, 0, 0, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-6px) scale(0.985);
+      transform-origin: top center;
+      transition:
+        opacity 0.16s ease,
+        transform 0.16s ease,
+        visibility 0s linear 0.16s;
+    }
+    .select.is-open .select-menu {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+      transition:
+        opacity 0.16s ease,
+        transform 0.16s ease,
+        visibility 0s linear 0s;
+    }
+    .select-menu:focus { outline: none; }
+    .select-menu::-webkit-scrollbar { width: 8px; }
+    .select-menu::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 999px;
+    }
+
+    .select-option {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.62rem 0.7rem;
+      border-radius: 9px;
+      font-size: 0.92rem;
+      line-height: 1.3;
+      color: var(--fg-2);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s ease, color 0.1s ease;
+    }
+    .select-option:hover,
+    .select-option.is-active {
+      background: #27272a;
+      color: var(--fg);
+    }
+    .select-option[aria-selected="true"] {
+      background: #3f3f46;
+      color: var(--fg);
+      font-weight: 600;
+    }
+
+    /* Active-item check mark */
+    .select-option::after {
+      content: "";
+      flex: none;
+      width: 9px;
+      height: 5px;
+      margin-left: auto;
+      border-left: 1.7px solid currentColor;
+      border-bottom: 1.7px solid currentColor;
+      opacity: 0;
+      transform: rotate(-45deg) scale(0);
+      transition: transform 0.14s ease, opacity 0.14s ease;
+    }
+    .select-option[aria-selected="true"]::after {
+      opacity: 0.9;
+      transform: rotate(-45deg) scale(1);
+    }
 
     .voice-info {
       margin-top: 0.55rem;
       font-size: 0.72rem;
       color: var(--muted);
       line-height: 1.4;
+    }
+
+    /* ---------- file:// notice ---------- */
+    .file-notice {
+      padding: 0.7rem 0.85rem;
+      border: 1px solid rgba(255, 193, 107, 0.28);
+      border-radius: 12px;
+      background: rgba(255, 193, 107, 0.08);
+      color: #f0c987;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .file-notice code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.74rem;
+      color: var(--fg);
     }
 
     /* ---------- Controls ---------- */
@@ -222,12 +400,11 @@
     .btn-primary:hover { background: #ffffff; }
 
     .btn-secondary {
-      background: transparent;
-      color: var(--fg-2);
+      background: var(--card-raised);
+      color: var(--fg);
       border-color: var(--line);
       padding: 0 1.1rem;
     }
-    .btn-secondary:hover { background: var(--card-raised); color: var(--fg); }
 
     .btn-loading { opacity: 0.75; pointer-events: none; }
     .spinner { display: none; }
@@ -249,22 +426,35 @@
       flex-direction: column;
       gap: 0.75rem;
       padding: 1rem;
-      background: var(--card-raised);
+      background: var(--card);
       border: 1px solid var(--line);
       border-radius: var(--radius-card);
       animation: rise 0.28s ease both;
     }
+
+    /* Native audio element: strip every UA-painted background layer so the
+       control row is fully transparent against the card surface. */
+    audio {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+    audio::-webkit-media-controls,
+    audio::-webkit-media-controls-background,
+    audio::-webkit-media-controls-enclosure,
+    audio::-webkit-media-controls-panel {
+      background: transparent !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+    }
+    audio::-webkit-media-controls-enclosure {
+      border-radius: 0 !important;
+    }
     @keyframes rise {
       from { opacity: 0; transform: translateY(6px); }
       to   { opacity: 1; transform: translateY(0); }
-    }
-
-    audio {
-      width: 100%;
-      height: 40px;
-      border-radius: 10px;
-      background: transparent;
-      color-scheme: dark;
     }
 
     .download-btn {
@@ -277,7 +467,8 @@
       font-weight: 600;
       color: var(--fg-2);
       text-decoration: none;
-      background: transparent;
+      /* Exactly the card surface — one unified shade for the whole card. */
+      background: var(--card);
       border: 1px solid var(--line-strong);
       border-radius: 12px;
       transition: background 0.15s ease, color 0.15s ease;
@@ -309,8 +500,7 @@
 </head>
 <body>
   <main class="container">
-    <h1><span>Free TTS,</span><span>right on your device.</span></h1>
-    <p class="subtitle">Convert text to speech right in the browser. Max one sentence — about 55 characters — for the cleanest audio.</p>
+    <h1><span>Free <span class="tts-font">TTS</span>,</span><span>right on your device.</span></h1>
 
     <div class="ui">
       <!-- Status chip -->
@@ -322,20 +512,24 @@
       <!-- Text input card -->
       <section class="card">
         <label class="label" for="textInput">Your text</label>
-        <textarea id="textInput" maxlength="55" placeholder="Type or paste text here…">The quick brown fox jumps over the lazy dog. Kokoro is a lightweight 82 M parameter TTS model that runs entirely in the browser. Try it on your phone or laptop!</textarea>
+        <textarea id="textInput" maxlength="55" placeholder="Type or paste text here…">This is an example text to test the AI voice!</textarea>
         <div class="char-counter" id="charCount">0 / 55 characters</div>
       </section>
 
+      <p class="subtitle">Convert text to speech right in the browser. Max one sentence — about 55 characters — for the cleanest audio.</p>
+
       <!-- Voice card -->
       <section class="card">
-        <label class="label" for="voiceSelect">Voice</label>
-        <select id="voiceSelect" class="voice-select">
-          <option value="am_adam">am_adam (default)</option>
-          <option value="am_michael">am_michael</option>
-          <option value="af_heart">af_heart</option>
-          <option value="af_bella">af_bella</option>
-          <option value="bf_emma">bf_emma</option>
-        </select>
+        <span class="label" id="voiceLabel">Voice</span>
+        <div class="select">
+          <select id="voiceSelect" class="voice-select-native" tabindex="-1" aria-hidden="true">
+            <option value="am_adam">am_adam (default)</option>
+            <option value="am_michael">am_michael</option>
+            <option value="af_heart">af_heart</option>
+            <option value="af_bella">af_bella</option>
+            <option value="bf_emma">bf_emma</option>
+          </select>
+        </div>
         <div class="voice-info" id="voiceInfo">Select a voice to hear it spoken</div>
       </section>
 
@@ -359,6 +553,21 @@
     <div class="foot">Kokoro‑82M · runs locally · no API key</div>
     <div class="home-indicator" aria-hidden="true"></div>
   </main>
+
+  <!-- file:// has no module support; explain how to run the TTS app properly. -->
+  <script>
+    if (location.protocol === 'file:') {
+      const notice = document.createElement('div');
+      notice.className = 'file-notice';
+      notice.innerHTML =
+        'Opened as a local file. Start a server with <code>python3 -m http.server 8765</code> ' +
+        'and open <code>http://localhost:8765</code> to load the TTS model.';
+      document.querySelector('.ui').prepend(notice);
+    }
+  </script>
+
+  <!-- Custom voice dropdown (wraps #voiceSelect) -->
+  <script defer src="voice-select.js"></script>
 
   <!-- Kokoro‑JS CDN (Esm) -->
   <script type="module" src="app.js"></script>
