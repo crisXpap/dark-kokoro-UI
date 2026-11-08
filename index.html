@@ -6,7 +6,9 @@
   <meta name="theme-color" content="#000000">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <title>Loom TTS</title>
+  <title>Pebble TTS</title>
+  <link rel="icon" type="image/png" href="fav.png">
+  <link rel="apple-touch-icon" href="fav.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <!-- Fetch the Roboto Flex woff2 (latin subset — the headline only uses latin
@@ -111,7 +113,11 @@
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
-      padding: max(1.25rem, env(safe-area-inset-top)) 1.25rem calc(1rem + env(safe-area-inset-bottom));
+      /* Top spacing halved twice more from the original; env() still wins
+         on notched devices so the hardware safe area is never cropped. */
+      /* ~1cm of calm space above the hero line; env() still wins on
+         notched devices so the hardware safe area is never cropped. */
+      padding: max(1cm, env(safe-area-inset-top)) 1.25rem calc(1rem + env(safe-area-inset-bottom));
     }
 
     /* ---------- Header ---------- */
@@ -131,7 +137,7 @@
     }
 
     h1 {
-      margin-top: 1.1rem;
+      margin-top: 1.25rem; /* block seated 20px lower, toward the card */
       margin-bottom: 1.25rem;
       font-family: "Roboto Flex", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       font-optical-sizing: auto;
@@ -146,8 +152,40 @@
       display: block;
       white-space: nowrap; /* each line fits at its own scale */
     }
+    /* Inline sticker beside the title: sized by the headline's font-size so
+       it scales with the clamped title; nudged down to sit on the baseline. */
+    h1 .hero-sticker {
+      display: inline-block;
+      /* 3x the original 1.15em pebble */
+      width: 3.45em;
+      height: 3.45em;
+      margin-left: 0.5em;
+      /* Rock sits relative to the text EXACTLY as the original design
+         (-0.42em, base-dip only); the glyph baseline rides on this value,
+         so it stays frozen. "Lower" nudges go on translateY instead —
+         rock-only, text and layout untouched.
+         margin-top kills the giant ascent the 3.45em rock used to
+         reserve inside line 1 (the ~100px phantom gap above the
+         headline); the line box falls back to the text strut and the
+         rock is pulled back down into place purely visually by the
+         transform below. */
+      vertical-align: -0.42em;
+      margin-top: -3.05em;
+      /* Diagonal seat: X moves left/up toward the wordmark, Y keeps the
+         vertical dip. Rock-only knob — text and layout stay frozen. */
+      /* −20px cancels the block's 20px descent so the rock keeps its
+         absolute seat: same distance from the page top, card stays clear. */
+      transform: translate(-0.3cm, calc(0.3em + 2.4cm - 20px));
+      will-change: transform;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
     /* Second title line sits one step smaller so it never wraps. */
     h1 .hero-line--sub {
+      /* Pull line 2 up closer to line 1 without touching the rock/text
+         lockup: line 1's box height is set by the rock slot, so the gap
+         is trimmed from line 2's side only (em scales with the title). */
+      margin-top: -0.3em;
       font-size: 0.62em;
     }
     /* Per-character spans carrying the multi-axis variation morphing
@@ -209,6 +247,12 @@
     .card:focus-within {
       border-color: var(--line-strong);
       box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+    }
+
+    /* Slightly tighter gap under the pill; still enough to keep the rock's
+       bottom edge clear of the card. */
+    .text-card {
+      margin-top: 0.6rem;
     }
 
     .label {
@@ -637,8 +681,9 @@
 
     /* ---------- Footer ---------- */
     .foot {
-      margin-top: auto;
-      padding-top: 1.75rem;
+      /* In flow with the elements above instead of pinned to the bottom
+         by margin-top:auto (which stranded it alone on tall/short pages). */
+      margin-top: 1.25rem;
       font-size: 0.66rem;
       letter-spacing: 0.04em;
       color: var(--muted);
@@ -664,9 +709,12 @@
   <!-- Animated background glow: slowly brightens and fades in cycles. -->
   <div class="bg-glow" aria-hidden="true"></div>
   <main class="container">
-    <h1 id="hero-title" aria-label="Loom TTS, your local AI voice.">
-      <span class="hero-line" data-line="0">Loom TTS,</span>
+    <h1 id="hero-title" aria-label="Pebble TTS, your local AI voice.">
+      <span class="hero-line" data-line="0">Pebble TTS</span>
       <span class="hero-line hero-line--sub" data-line="1">your local AI voice.</span>
+      <!-- Defined outside .hero-line so the character-rebuild pass in
+           hero-title.js never wipes it; it re-appends it to line 0. -->
+      <img id="hero-sticker" class="hero-sticker" src="sticker.png" alt="" aria-hidden="true">
     </h1>
 
     <div class="ui">
@@ -726,7 +774,7 @@
       </div>
     </div>
 
-    <div class="foot">Kokoro‑82M · runs locally · no API key · created by Chris Pappas · <a href="mailto:christosmariospappas@gmail.com" class="foot-link">christosmariospappas@gmail.com</a></div>
+    <div class="foot">Kokoro‑82M · Runs locally · No API key · Created by Chris Pappas · <a href="mailto:christosmariospappas@gmail.com" class="foot-link">christosmariospappas@gmail.com</a></div>
   </main>
 
   <!-- file:// has no module support; explain how to run the TTS app properly. -->

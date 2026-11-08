@@ -11,18 +11,18 @@
    Formula, for index i of N total characters:
      progress = i / (N - 1)
 
-   Special case: the word "Loom" reuses the exact weight values the line
+   Special case: the word "Pebble" reuses the exact weight values the line
    below it ("your local AI voice.") computes, reversed — light on the
    left, progressively bolder toward the right of the word.
 
-   Second special case: "TTS," starts exactly as bold as Loom's last
-   letter ("m") and keeps getting lighter with each character, at the
+   Second special case: "TTS" starts exactly as bold as Pebble's last
+   letter ("e") and keeps getting lighter with each character, at the
    same per-character rate every other word in the title steps down by. */
 (function () {
   'use strict';
 
-  var LINES = ['Loom TTS,', 'your local AI voice.'];
-  var MIRROR_WORD = 'Loom';
+  var LINES = ['Pebble TTS', 'your local AI voice.'];
+  var MIRROR_WORD = 'Pebble';
 
   var WGHT_MAX = 900;
   var WGHT_MIN = 100;
@@ -78,7 +78,7 @@
     return belowWeights[pos];
   }
 
-  // "TTS," header word: as bold as Loom's last letter at its first "T",
+  // "TTS" header word: as bold as Pebble's last letter at its first "T",
   // then descending per character at the title-wide step (weight units
   // lost per character along the global 900 → 100 ramp).
   var wordEndWeight = mirroredWeight(MIRROR_WORD.length - 1);
@@ -97,7 +97,7 @@
       if (lineIndex === 0 && chIndex < MIRROR_WORD.length) {
         v.wght = mirroredWeight(chIndex);
       } else if (lineIndex === 0 && chIndex > MIRROR_WORD.length) {
-        // First "T" (j = 0) is exactly as bold as Loom's "m"; each
+        // First "T" (j = 0) is exactly as bold as Pebble's last "e"; each
         // following character drops by the title-wide rate. The space
         // between the words keeps its untouched global value.
         var j = chIndex - MIRROR_WORD.length - 1;
@@ -115,5 +115,13 @@
       lineEl.appendChild(span);
       i++;
     });
+
+    // The sticker defined in index.html sits as a direct <h1> child so the
+    // textContent wipe above can't remove it; move it inline after the first
+    // line's characters so it rides beside the last glyph of the main line.
+    if (lineIndex === 0) {
+      var sticker = document.getElementById('hero-sticker');
+      if (sticker) lineEl.appendChild(sticker);
+    }
   });
 })();
