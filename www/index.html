@@ -1,0 +1,1014 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0c0e">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Pebble TTS</title>
+  <!-- 180×180 keeps the tab icon and the iOS home-screen icon identical and
+       small (~22 KB). The 2000×2000 source lives outside www/ as
+       fav-original.png so it never ships in the app bundle. -->
+  <!-- Tab icon: multi-size ICO (16/32/48) cut from the same glossy black
+       pebble as the launcher icons. The iOS icon is a full-bleed opaque
+       180px PNG because iOS rejects alpha and masks the corners itself. -->
+  <link rel="icon" href="favicon.ico" sizes="16x16 32x32 48x48">
+  <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <!-- Fetch the Roboto Flex woff2 (latin subset — the headline only uses latin
+       glyphs) at high priority, in parallel with everything else. Without this
+       the font only starts loading after the Google Fonts CSS arrives (a serial
+       CSS → font round trip), which caused the ~1s of default-styled text. -->
+  <link rel="preload" as="font" type="font/woff2" crossOrigin="anonymous"
+        href="https://fonts.gstatic.com/s/robotoflex/v30/NaNTepOXO_NexZs0b5QrzlOHb8wCikXpYqmZsWI-__OGbt8jZktqc2V3Zs0KvDLdBP8SBZtOs2IifRuUZQMsPJtUsR4DEK6cULNeUx9XgTnH37Ha_FIAp4Fm0PP1hw45DntW2x0wZGzhPmr1YNMYKYn9_1IQXGwJAiUJVUMdN5YUW4O8HtSCUhhK.woff2">
+  <!-- The Google Fonts stylesheet itself is small but was previously fetched
+       late; preloading as=style starts it at the top of the fetch queue. -->
+  <link rel="preload" as="style"
+        href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,slnt,wdth,wght@8..144,-10..0,25..151,100..1000&display=block">
+  <!-- display=block → font-display: block: while the font is in flight the
+       headline stays invisible instead of being painted in the fallback
+       system font, killing the flash of unstyled text (FOUT). -->
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Flex:opsz,slnt,wdth,wght@8..144,-10..0,25..151,100..1000&display=block" rel="stylesheet">
+  <script>
+    /* Keep the headline hidden until Roboto Flex is actually ready.
+       CSS keeps #hero-title at visibility:hidden behind the
+       hero-font-pending flag; this script flips the flag the moment the
+       font face has loaded (or after a short failsafe timeout, so the
+       title can never stay hidden if the font CDN is unreachable). */
+    (function () {
+      var root = document.documentElement;
+      root.classList.add('hero-font-pending');
+      var done = false;
+      function reveal() {
+        if (done) return;
+        done = true;
+        root.classList.remove('hero-font-pending');
+        root.classList.add('hero-font-ready');
+      }
+      var failsafe = setTimeout(reveal, 2000);
+      if (document.fonts && document.fonts.load) {
+        // Triggers/awaits the load of the faces the headline uses.
+        document.fonts.load('1rem "Roboto Flex"')
+          .then(reveal, reveal);
+      } else {
+        clearTimeout(failsafe);
+        reveal();
+      }
+    }());
+  </script>
+  <style>
+    :root {
+      color-scheme: dark;
+
+      /* Monochrome palette sampled from the reference screenshots */
+      --bg: #0c0c0e;
+      --surface: #0b0b0d;
+      --card: #151517;
+      --card-raised: #1f1f1f;
+      --fg: #f5f5f7;
+      --fg-2: #a1a1a6;
+      --muted: #6e6e73;
+      --line: rgba(255, 255, 255, 0.07);
+      --line-strong: rgba(255, 255, 255, 0.18);
+      --cta: #f5f5f7;
+      --cta-ink: #0a0a0a;
+      --radius-card: 22px;
+      --radius-field: 16px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* The hidden attribute must win over author display values (.btn,
+       .voice-cache-status, …) or elements toggled with `hidden` stay visible. */
+    [hidden] { display: none !important; }
+
+    /* ---------- Root scrolling ---------- */
+    /* The document (not the centered column) owns vertical scrolling, so the
+       scrollbar sits at the window's far-right edge. Horizontal panning stays
+       locked at the root, including inside mobile WebViews. */
+    html, body {
+      width: 100%;
+      max-width: 100%;
+      margin: 0;
+      padding: 0;
+      overflow-x: hidden;
+      overflow-y: auto;
+      overscroll-behavior-x: none;
+      background-color: var(--bg);
+    }
+
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--fg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ---------- Background glow (cycles between bright and dim) ---------- */
+    /* Fixed layer behind all content, carrying the radial "light" that
+       used to sit on <body>. It breathes: opacity and scale ease up to a
+       peak and back down in a soft, repeating cycle. */
+    .bg-glow {
+      position: fixed;
+      inset: 0;
+      z-index: -1;
+      pointer-events: none;
+      /* Ultra-deep charcoal rather than pure #000: the top stays a touch
+         lighter than the base so the breathing glow still reads, but the
+         floor lifts to --bg so nothing below it looks like a black hole. */
+      background: radial-gradient(120% 55% at 50% 0%, #17171b 0%, #0b0b0d 55%, #0a0a0c 100%);
+      transform-origin: top center;
+      will-change: opacity, transform;
+      animation: glow-pulse 7s ease-in-out infinite;
+    }
+    @keyframes glow-pulse {
+      0%, 100% { opacity: 0.72; transform: scale(1); }
+      50%      { opacity: 1;   transform: scale(1.06); }
+    }
+
+    ::selection { background: rgba(245, 245, 247, 0.22); }
+
+    main, .container {
+      position: relative;
+      width: 100%;
+      max-width: 100%;
+      /* Grow with the content instead of scrolling inside a fixed-height
+         column; the document handles vertical scrolling. */
+      min-height: 100vh;
+      min-height: 100dvh;
+      margin: 0 auto;
+      box-sizing: border-box;
+      touch-action: pan-y;
+      display: flex;
+      flex-direction: column;
+      /* Top spacing halved twice more from the original; env() still wins
+         on notched devices so the hardware safe area is never cropped. */
+      /* ~1cm of calm space above the hero line; env() still wins on
+         notched devices so the hardware safe area is never cropped. */
+      padding: max(1cm, env(safe-area-inset-top)) 1.25rem calc(1rem + env(safe-area-inset-bottom));
+    }
+
+    /* ---------- Wide screens: keep the phone layout ---------- */
+    /* Phones get the whole window. From tablet width up the column stops
+       growing and sits centred at phone proportions, so the UI looks the
+       same as it does on a handset, just with empty black on both sides.
+       The document scrollbar now stays pinned to the window edge. */
+    @media (min-width: 600px) {
+      main, .container {
+        max-width: 432px;
+        margin-inline: auto;
+      }
+
+      /* Style the root scrollbar at the window's far-right edge. */
+      html {
+        scrollbar-width: thin;
+        scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+      }
+      html::-webkit-scrollbar { width: 4px; }
+      html::-webkit-scrollbar-track { background: transparent; }
+      html::-webkit-scrollbar-thumb {
+        background: rgba(255, 255, 255, 0.14);
+        border-radius: 999px;
+      }
+    }
+
+    /* ---------- Header ---------- */
+    /* Headline font gate: while Roboto Flex is still loading, the whole
+       headline is held invisible (font-display: block + this visibility
+       rule) so the fallback system font never flashes on first render.
+       The inline <head> script swaps the flag to hero-font-ready as soon
+       as the font face resolves, with a 2s failsafe. */
+    html.hero-font-pending #hero-title { visibility: hidden; }
+    html.hero-font-ready #hero-title {
+      visibility: visible;
+      animation: hero-reveal 0.35s ease-out both;
+    }
+    @keyframes hero-reveal {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    h1 {
+      margin-top: 1.25rem; /* block seated 20px lower, toward the card */
+      margin-bottom: 1.25rem;
+      /* The headline is nowrap and the sticker advances past the line box,
+         so it used to make .container horizontally scrollable (~10px at
+         390px wide = the "1cm slide"). Clip on the X axis only: this
+         creates no scroll container, so no horizontal drag is possible,
+         while overflow-y: visible keeps the sticker's downward overhang.
+         Negative side margins + equal padding push the clip boundary out
+         to the container edge so the full-size rock is not cut off. */
+      margin-left: -1.25rem;
+      margin-right: -1.25rem;
+      padding-left: 1.25rem;
+      padding-right: 1.25rem;
+      box-sizing: border-box;
+      overflow-x: clip;
+      overflow-y: visible;
+      font-family: "Roboto Flex", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-optical-sizing: auto;
+      font-size: clamp(2.4rem, 11vw, 3rem);
+      font-weight: 900; /* default; per-char spans override via font-variation-settings */
+      line-height: 1.1;
+      letter-spacing: -0.03em;
+      text-align: left;
+      color: #ffffff;
+    }
+    h1 .hero-line {
+      display: block;
+      white-space: nowrap; /* each line fits at its own scale */
+    }
+    /* Inline sticker beside the title: sized by the headline's font-size so
+       it scales with the clamped title; nudged down to sit on the baseline. */
+    h1 .hero-sticker {
+      display: inline-block;
+      /* 3x the original 1.15em pebble */
+      width: 3.45em;
+      height: 3.45em;
+      margin-left: 0.5em;
+      /* Rock sits relative to the text EXACTLY as the original design
+         (-0.42em, base-dip only); the glyph baseline rides on this value,
+         so it stays frozen. "Lower" nudges go on translateY instead —
+         rock-only, text and layout untouched.
+         margin-top kills the giant ascent the 3.45em rock used to
+         reserve inside line 1 (the ~100px phantom gap above the
+         headline); the line box falls back to the text strut and the
+         rock is pulled back down into place purely visually by the
+         transform below. */
+      vertical-align: -0.42em;
+      margin-top: -3.05em;
+      /* Diagonal seat: X moves left/up toward the wordmark, Y keeps the
+         vertical dip. Rock-only knob — text and layout stay frozen. */
+      /* −20px cancels the block's 20px descent so the rock keeps its
+         absolute seat: same distance from the page top, card stays clear. */
+      transform: translate(-0.3cm, calc(0.3em + 2.4cm - 20px));
+      will-change: transform;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+    /* Second title line sits one step smaller so it never wraps. */
+    h1 .hero-line--sub {
+      /* Pull line 2 up closer to line 1 without touching the rock/text
+         lockup: line 1's box height is set by the rock slot, so the gap
+         is trimmed from line 2's side only (em scales with the title). */
+      margin-top: -0.3em;
+      font-size: 0.62em;
+    }
+    /* Per-character spans carrying the multi-axis variation morphing
+       (wght 900→100, wdth 100→145→75, slnt -10→0) — classic specimen style. */
+    h1 .hero-char {
+      display: inline-block;
+      white-space: pre; /* keep real spaces from collapsing */
+      transition: font-variation-settings 0.25s ease;
+    }
+
+    .subtitle {
+      color: var(--fg-2);
+      font-size: 0.88rem;
+      font-style: italic;
+      line-height: 1.5;
+      margin: 0;
+    }
+
+    /* Inline glyph: it flows as the first character of the sentence, so
+       line 2 onwards wraps underneath it instead of starting in a separate
+       flex column. Slight negative vertical-align seats it on the cap
+       height of the italic copy rather than on the baseline. */
+    .subtitle svg {
+      width: 1.05em;
+      height: 1.05em;
+      vertical-align: -0.155em;
+      margin-right: 0.22em;
+    }
+
+    /* ---------- UI stack ---------- */
+    .ui {
+      display: flex;
+      flex-direction: column;
+      gap: 1.15rem;
+      flex: 1;
+    }
+
+    /* ---------- Status chip ---------- */
+    .status {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      align-self: flex-start;
+      gap: 0.55rem;
+      padding: 0.42rem 0.8rem;
+      border-radius: 999px;
+      background: var(--card);
+      border: 1px solid var(--line);
+      font-size: 0.72rem;
+      letter-spacing: 0.01em;
+      color: var(--muted);
+    }
+    .status .mode {
+      color: var(--fg);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .status .progress { display: none; opacity: 0; transition: opacity 0.2s ease; }
+    .status.loading .progress { display: inline; opacity: 1; }
+    .status.error {
+      border-color: rgba(248, 113, 113, 0.45);
+      cursor: pointer;
+    }
+    .status.error .mode { color: #f87171; }
+
+    /* ---------- Cards ---------- */
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      padding: 1rem;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    /* The card itself becomes the input surface when its field is focused. */
+    .card:focus-within {
+      border-color: var(--line-strong);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.05);
+    }
+
+    /* Slightly tighter gap under the pill; still enough to keep the rock's
+       bottom edge clear of the card. */
+    .text-card {
+      margin-top: 0.6rem;
+    }
+
+    .label {
+      display: block;
+      font-size: 0.66rem;
+      font-weight: 600;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.55rem;
+    }
+
+    /* ---------- Text card head: label + compact format button ---------- */
+    .text-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      /* Puts the button in the top-right corner, on the same line as the label.
+         The row scrolls with the card, so the button never drifts as text grows. */
+    }
+    .text-head .label { margin-bottom: 0; }
+    /* Restore the breathing room the label's own margin used to provide. */
+    .text-head + textarea { margin-top: 0.55rem; }
+
+    /* Capsule-style bubble: same pill treatment as the status chip, just
+       smaller — a raised surface, hairline border and fully-rounded ends. */
+    .card-btn {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.1rem;
+      height: 2.1rem;
+      padding: 0;
+      margin: -0.25rem 0; /* optically centres the small bubble against the label row */
+      background: var(--card-raised);
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--fg); /* white icon, not muted gray */
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+    }
+    .card-btn:hover {
+      background: #2a2a2e;
+      border-color: var(--line-strong);
+      color: var(--fg);
+    }
+    .card-btn:active {
+      transform: scale(0.96);
+    }
+    .card-btn:focus-visible {
+      outline: 2px solid var(--fg);
+      outline-offset: 2px;
+    }
+    .card-btn svg {
+      display: block;
+      width: 1rem;
+      height: 1rem;
+    }
+
+    /* ---------- Text area ---------- */
+    textarea {
+      display: block;
+      width: 100%;
+      padding: 0;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.5;
+      color: var(--fg);
+      background: transparent;
+      border: 0;
+      border-radius: 0;
+      resize: vertical;
+      min-height: 118px;
+    }
+    textarea::placeholder { color: rgba(245, 245, 247, 0.35); }
+    textarea:focus { outline: none; }
+
+    .char-counter {
+      margin-top: 0.7rem;
+      padding-right: 0.15rem;
+      font-size: 0.7rem;
+      line-height: 1;
+      color: var(--muted);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* ---------- Format button (outside the card, across the status pill) ---------- */
+    .status-block {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+    .status-row {
+      display: flex;
+      /* The bubble defines the row height; the button stretches to match it exactly. */
+      align-items: stretch;
+    }
+    /* The pill may shrink (ellipsis) so long status messages never overflow. */
+    .status-row .status {
+      align-self: flex-end;
+      min-width: 0;
+      max-width: 100%;
+      overflow: hidden;
+    }
+    .status-row .status .mode {
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* ---------- Voice select (custom dropdown) ---------- */
+    .select { position: relative; }
+
+    /* Fallback: if JS fails to load, keep a usable native select visible. */
+    .voice-select-native {
+      -webkit-appearance: none;
+      appearance: none;
+      display: block;
+      width: 100%;
+      min-height: 3rem;
+      padding: 0 2.4rem 0 0.95rem;
+      font-family: inherit;
+      font-size: 1rem;
+      color: var(--fg);
+      background-color: #0e0e11;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5 6 6.5 11 1.5' fill='none' stroke='%236e6e73' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 0.95rem center;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      color-scheme: dark;
+      cursor: pointer;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    /* Native control stays in the DOM for app.js, but is visually hidden
+       once the custom dropdown has been built. */
+    .select.is-enhanced .voice-select-native {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      margin: -1px;
+      padding: 0;
+      border: 0;
+      opacity: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      clip-path: inset(50%);
+      pointer-events: none;
+    }
+
+    .select-trigger {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      width: 100%;
+      min-height: 3rem;
+      padding: 0 0.95rem;
+      font-family: inherit;
+      font-size: 1rem;
+      line-height: 1.4;
+      color: var(--fg);
+      text-align: left;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+    .select-trigger:hover {
+      border-color: var(--line-strong);
+    }
+    .select-trigger:focus-visible {
+      outline: none;
+      border-color: rgba(255, 255, 255, 0.34);
+      box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.06);
+    }
+    .select.is-open .select-trigger {
+      border-color: rgba(255, 255, 255, 0.26);
+    }
+
+    .select-value {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .select-chevron {
+      flex: none;
+      width: 12px;
+      height: 8px;
+      color: var(--muted);
+      transition: transform 0.18s ease, color 0.15s ease;
+    }
+    .select.is-open .select-chevron {
+      color: var(--fg-2);
+      transform: rotate(180deg);
+    }
+
+    .select-menu {
+      position: absolute;
+      top: calc(100% + 0.4rem);
+      left: 0;
+      right: 0;
+      z-index: 1000;
+      max-height: 15rem;
+      margin: 0;
+      padding: 0.35rem;
+      list-style: none;
+      overflow-y: auto;
+      overscroll-behavior-y: none;
+      touch-action: pan-y;
+      background: rgba(24, 24, 27, 0.94);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 14px;
+      box-shadow:
+        0 20px 48px -16px rgba(0, 0, 0, 0.85),
+        inset 0 1px 0 rgba(255, 255, 255, 0.04);
+      opacity: 0;
+      visibility: hidden;
+      transform: translateY(-6px) scale(0.985);
+      transform-origin: top center;
+      transition:
+        opacity 0.16s ease,
+        transform 0.16s ease,
+        visibility 0s linear 0.16s;
+    }
+    .select.is-open .select-menu {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0) scale(1);
+      transition:
+        opacity 0.16s ease,
+        transform 0.16s ease,
+        visibility 0s linear 0s;
+    }
+    .select-menu:focus { outline: none; }
+    .select-menu::-webkit-scrollbar { width: 8px; }
+    .select-menu::-webkit-scrollbar-thumb {
+      background: #3f3f46;
+      border-radius: 999px;
+    }
+
+    .select-option {
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      padding: 0.62rem 0.7rem;
+      border-radius: 9px;
+      font-size: 0.92rem;
+      line-height: 1.3;
+      color: var(--fg-2);
+      cursor: pointer;
+      user-select: none;
+      transition: background 0.1s ease, color 0.1s ease;
+    }
+    .select-option:hover,
+    .select-option.is-active {
+      background: #27272a;
+      color: var(--fg);
+    }
+    .select-option[aria-selected="true"] {
+      background: #3f3f46;
+      color: var(--fg);
+      font-weight: 600;
+    }
+
+    /* Active-item check mark */
+    .select-option::after {
+      content: "";
+      flex: none;
+      width: 9px;
+      height: 5px;
+      margin-left: auto;
+      border-left: 1.7px solid currentColor;
+      border-bottom: 1.7px solid currentColor;
+      opacity: 0;
+      transform: rotate(-45deg) scale(0);
+      transition: transform 0.14s ease, opacity 0.14s ease;
+    }
+    .select-option[aria-selected="true"]::after {
+      opacity: 0.9;
+      transform: rotate(-45deg) scale(1);
+    }
+
+    .voice-info {
+      margin-top: 0.55rem;
+      font-size: 0.72rem;
+      color: var(--muted);
+      line-height: 1.4;
+    }
+
+    /* ---------- Offline voice pack card ---------- */
+    /* .card supplies the base surface, then these overrides make the prompt
+       read as an optional, recessed action: a dashed hairline, a near-black
+       background, and softer type than the primary VOICE card. */
+    .voice-cache-card {
+      background: #0b0b0c;
+      border: 1px dashed rgba(255, 255, 255, 0.16);
+      /* Slim bar: 10px top/bottom, horizontal padding kept at 1rem so it
+         still lines up with the cards above. */
+      padding: 0.625rem 1rem;
+      /* Tuck it slightly closer to the VOICE card and the controls row. */
+      margin-top: -0.25rem;
+      margin-bottom: -0.25rem;
+      overflow: hidden;
+      max-height: 14rem;
+      transition:
+        opacity 0.32s ease,
+        transform 0.32s ease,
+        max-height 0.32s ease,
+        padding 0.32s ease,
+        border-width 0.32s ease,
+        margin 0.32s ease;
+    }
+    .voice-cache-card.is-collapsing {
+      opacity: 0;
+      transform: translateY(-4px);
+      max-height: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+      border-width: 0;
+      /* Cancels the flex gaps (minus the bar's own bottom margin) so the
+         stack below does not jump when the card finishes collapsing. */
+      margin-top: -0.9rem;
+    }
+
+    .voice-cache-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.9rem;
+    }
+    .voice-cache-copy { min-width: 0; }
+
+    .voice-cache-title {
+      font-size: 1rem;
+      font-weight: 400;
+      line-height: 1.2;
+      color: #d1d1d6;
+    }
+    .voice-cache-sub {
+      margin-top: 2px;
+      font-size: 0.72rem;
+      line-height: 1.2;
+      color: #71717a;
+    }
+
+    /* Muted secondary action: a quiet ghost chip that never competes with
+       the solid white "Generate Speech" primary. */
+    .voice-cache-yes {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: 2rem;
+      min-height: 2rem;
+      padding: 0 0.9rem;
+      font-family: inherit;
+      font-size: 0.8125rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: #d1d1d6;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: var(--radius-field);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease,
+                  color 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
+    }
+    .voice-cache-yes:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.24);
+      color: #f5f5f7;
+    }
+    .voice-cache-yes:active {
+      background: rgba(255, 255, 255, 0.09);
+      transform: scale(0.97);
+    }
+    .voice-cache-yes:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+    .voice-cache-yes:disabled { opacity: 0.55; cursor: default; }
+
+    .voice-cache-status {
+      flex: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-size: 0.72rem;
+      line-height: 1.3;
+      color: var(--fg-2);
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
+    }
+    .voice-cache-spinner {
+      flex: none;
+      width: 12px;
+      height: 12px;
+      border: 2px solid rgba(255, 255, 255, 0.18);
+      border-top-color: var(--fg);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    /* ---------- file:// notice ---------- */
+    .file-notice {
+      padding: 0.7rem 0.85rem;
+      border: 1px solid rgba(255, 193, 107, 0.28);
+      border-radius: 12px;
+      background: rgba(255, 193, 107, 0.08);
+      color: #f0c987;
+      font-size: 0.78rem;
+      line-height: 1.45;
+    }
+    .file-notice code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+      font-size: 0.74rem;
+      color: var(--fg);
+    }
+
+    /* ---------- Controls ---------- */
+    .controls {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.55rem;
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      min-height: 52px;
+      padding: 0 1.25rem;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      border: 1px solid transparent;
+      border-radius: var(--radius-field);
+      cursor: pointer;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.08s ease, opacity 0.15s ease;
+    }
+    .btn:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
+    .btn:active { transform: scale(0.985); }
+    .btn:disabled { cursor: default; opacity: 0.55; }
+
+    .btn-primary {
+      background: var(--cta);
+      color: var(--cta-ink);
+      box-shadow: 0 10px 26px -12px rgba(255, 255, 255, 0.35);
+    }
+    .btn-primary:hover { background: #ffffff; }
+
+    .btn-secondary {
+      background: var(--card-raised);
+      color: var(--fg);
+      border-color: var(--line);
+      padding: 0 1.1rem;
+    }
+
+    .btn-loading { opacity: 0.75; pointer-events: none; }
+    .spinner { display: none; }
+    .btn-loading .spinner {
+      display: inline-block;
+      width: 13px;
+      height: 13px;
+      border: 2px solid rgba(10, 10, 10, 0.25);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ---------- Output ---------- */
+    .audio-wrapper {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      padding: 1rem;
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-card);
+      animation: rise 0.28s ease both;
+    }
+
+    /* Native audio element: strip every UA-painted background layer so the
+       control row is fully transparent against the card surface. */
+    audio {
+      width: 100%;
+      background: transparent;
+      border: 0;
+      padding: 0;
+      box-shadow: none;
+    }
+    audio::-webkit-media-controls,
+    audio::-webkit-media-controls-background,
+    audio::-webkit-media-controls-enclosure,
+    audio::-webkit-media-controls-panel {
+      background: transparent !important;
+      background-color: transparent !important;
+      box-shadow: none !important;
+    }
+    audio::-webkit-media-controls-enclosure {
+      border-radius: 0 !important;
+    }
+    @keyframes rise {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    .download-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0 1rem;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--fg-2);
+      text-decoration: none;
+      /* Exactly the card surface — one unified shade for the whole card. */
+      background: var(--card);
+      /* Same 7% outline as the cards and the voice dropdown, so the Output
+         card reads as one flat surface instead of a brighter inner box. */
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      transition: background 0.15s ease, color 0.15s ease;
+    }
+    .download-btn:hover { background: rgba(255, 255, 255, 0.06); color: var(--fg); }
+    .download-btn[href=""] { opacity: 0.4; pointer-events: none; }
+
+    /* ---------- Footer ---------- */
+    .foot {
+      /* In flow with the elements above instead of pinned to the bottom
+         by margin-top:auto (which stranded it alone on tall/short pages). */
+      margin-top: 1.25rem;
+      font-size: 0.66rem;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      text-align: center;
+    }
+    .foot-link {
+      color: var(--fg-2);
+      text-decoration: none;
+      border-bottom: 1px solid transparent;
+      transition: color 0.15s ease, border-color 0.15s ease;
+    }
+    .foot-link:hover {
+      color: var(--fg);
+      border-bottom-color: var(--fg-2);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation: none !important; transition: none !important; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Animated background glow: slowly brightens and fades in cycles. -->
+  <div class="bg-glow" aria-hidden="true"></div>
+  <main class="container">
+    <h1 id="hero-title" aria-label="Pebble TTS, your local AI voice.">
+      <span class="hero-line" data-line="0">Pebble TTS</span>
+      <span class="hero-line hero-line--sub" data-line="1">your local AI voice.</span>
+      <!-- Defined outside .hero-line so the character-rebuild pass in
+           hero-title.js never wipes it; it re-appends it to line 0. -->
+      <img id="hero-sticker" class="hero-sticker" src="sticker.png" alt="" aria-hidden="true">
+    </h1>
+
+    <div class="ui">
+      <!-- Status chip + text input card (tight 0.5rem gap) -->
+      <div class="status-block">
+        <div class="status-row">
+          <div class="status" id="status" role="status" aria-live="polite">
+            <span class="mode" id="modeText">Initializing…</span>
+            <span class="progress" id="progress">0%</span>
+          </div>
+        </div>
+
+        <!-- Text input card -->
+        <section class="card text-card">
+          <div class="text-head">
+            <label class="label" for="textInput">Your text</label>
+            <button id="fixPunctBtn" class="card-btn" type="button"
+              aria-label="Format"
+              title="Clean up spacing and punctuation, and insert clause breaks (commas, semicolons, periods) for smoother speech">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" fill="currentColor"><path d="M20.6,22l-2.7-2.7q-0.55,0.32-1.15,0.51T15.5,20q-1.88,0-3.19-1.31T11,15.5t1.31-3.19T15.5,11t3.19,1.31T20,15.5q0,0.65-0.19,1.25T19.3,17.9L22,20.6L20.6,22Zm-3.32-4.73Q18,16.55 18,15.5t-0.72-1.78T15.5,13t-1.77,0.72T13,15.5t0.73,1.77T15.5,18t1.78-0.73ZM21,10H19V5H17V8H7V5H5V19h5v2H5q-0.83,0-1.41-0.59T3,19V5Q3,4.17 3.59,3.59T5,3H9.18q0.28-0.88 1.07-1.44T12,1q1,0 1.79,0.56T14.85,3H19q0.83,0 1.41,0.59T21,5v5ZM12.71,4.71Q13,4.42 13,4q0-0.43-0.29-0.71T12,3T11.29,3.29T11,4q0,0.42 0.29,0.71T12,5t0.71-0.29Z"/></svg>
+            </button>
+          </div>
+          <textarea id="textInput" placeholder="Type or paste text here…">This is an example text to test the AI voice!</textarea>
+          <div class="char-counter" id="charCount">0 characters</div>
+        </section>
+      </div>
+      <p class="subtitle"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="#e3e3e3"><path d="M11,17h2V11H11v6Zm1.71-8.29Q13,8.42 13,8q0-0.43-0.29-0.71T12,7T11.29,7.29T11,8q0,0.42 0.29,0.71T12,9t0.71-0.29ZM12,22q-2.07,0-3.9-0.79q-1.82-0.79-3.17-2.14Q3.58,17.73 2.79,15.9T2,12Q2,9.92 2.79,8.1Q3.58,6.27 4.93,4.93Q6.28,3.57 8.1,2.79Q9.93,2 12,2t3.9,0.79t3.17,2.14q1.35,1.35 2.14,3.17Q22,9.92 22,12t-0.79,3.9t-2.14,3.17q-1.35,1.35-3.17,2.14T12,22Zm0-2q3.35,0 5.68-2.32T20,12T17.68,6.32T12,4T6.33,6.32T4,12t2.33,5.68T12,20Zm0-8Z"/></svg>You might need to regenerate the text due to artifacts in speech. Long text is automatically split into short phrase‑length chunks for the cleanest audio.</p>
+      <!-- Offline voice pack prompt (hidden once every voice is cached) -->
+      <section class="card voice-cache-card" id="voiceCacheCard" hidden>
+        <div class="voice-cache-row">
+          <div class="voice-cache-copy">
+            <p class="voice-cache-title">Download all voices?</p>
+            <p class="voice-cache-sub" id="voiceCacheSub">~27 MB • Available offline</p>
+          </div>
+          <button id="voiceCacheYes" class="voice-cache-yes" type="button">Yes</button>
+          <div class="voice-cache-status" id="voiceCacheStatus" role="status" aria-live="polite" hidden>
+            <span class="voice-cache-spinner" aria-hidden="true"></span>
+            <span id="voiceCacheStatusText">Downloading 0 / 54…</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- Voice card -->
+      <section class="card">
+        <span class="label" id="voiceLabel">Voice</span>
+        <div class="select">
+          <select id="voiceSelect" class="voice-select-native" tabindex="-1" aria-hidden="true">
+            <option value="am_adam">am_adam (default)</option>
+            <option value="am_michael">am_michael</option>
+            <option value="af_heart">af_heart</option>
+            <option value="af_bella">af_bella</option>
+            <option value="bf_emma">bf_emma</option>
+          </select>
+        </div>
+        <div class="voice-info" id="voiceInfo">Select a voice to hear it spoken</div>
+      </section>
+
+      <!-- Actions -->
+      <div class="controls">
+        <button id="generateBtn" class="btn btn-primary">
+          <span class="spinner" aria-hidden="true"></span>
+          <span>Generate Speech</span>
+        </button>
+        <button id="clearBtn" class="btn btn-secondary">Clear</button>
+      </div>
+
+      <!-- Audio player (hidden until synthesis finishes) -->
+      <div class="audio-wrapper" id="audioWrapper" style="display:none">
+        <span class="label" style="margin:0">Output</span>
+        <audio id="audioPlayer" controls preload="metadata"></audio>
+        <a id="downloadBtn" class="download-btn" href="" download>Download WAV</a>
+      </div>
+    </div>
+
+    <div class="foot">Kokoro‑82M · Runs locally · No API key · Created by Chris Pappas · <a href="mailto:christosmariospappas@gmail.com" class="foot-link">christosmariospappas@gmail.com</a></div>
+  </main>
+
+  <!-- file:// has no module support; explain how to run the TTS app properly. -->
+  <script>
+    if (location.protocol === 'file:') {
+      const notice = document.createElement('div');
+      notice.className = 'file-notice';
+      notice.innerHTML =
+        'Opened as a local file. Start a server with <code>python3 -m http.server 8765</code> ' +
+        'and open <code>http://localhost:8765</code> to load the TTS model.';
+      document.querySelector('.ui').prepend(notice);
+    }
+  </script>
+
+  <!-- Hero title: per-character variable-font weight gradient (900 → 100) -->
+  <script defer src="hero-title.js"></script>
+
+  <!-- Custom voice dropdown (wraps #voiceSelect) -->
+  <script defer src="voice-select.js"></script>
+
+  <!-- Kokoro‑JS CDN (Esm) -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>
